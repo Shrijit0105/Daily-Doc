@@ -1,0 +1,379 @@
+# MongoDB Indexing: How Databases Find Data Efficiently
+
+## 1. Introduction
+
+Imagine having a database containing 1 million user records. Now suppose we want to find a particular user using their email address.
+
+One approach would be to start from the first record and check every document until we find the matching email.
+
+This approach works, but it can become expensive when the database grows.
+
+This is where **database indexing** becomes important.
+
+An index helps a database locate information without having to examine every document in a collection.
+
+I wanted to understand how MongoDB handles this internally and why indexes are important when designing applications that need to work with large amounts of data.
+
+## 2. What Is an Index?
+
+An index is a data structure maintained by a database to make searching and retrieving information more efficient.
+
+Think about the index section at the back of a textbook.
+
+If we want to find a particular topic, we don't necessarily need to read every page. We can look up the topic in the index and find the page number.
+
+Database indexes follow a similar idea.
+
+Without an index, MongoDB may need to examine documents one by one.
+
+With a suitable index, MongoDB can use the index to locate matching documents more efficiently.
+
+## 3. Creating a Sample MongoDB Collection
+
+Let's consider a collection called `users`.
+
+A document in this collection might look like this:
+
+```javascript
+{
+    _id: 101,
+    name: "Arjun",
+    email: "arjun@example.com",
+    age: 21,
+    city: "Kolkata"
+}
+```
+
+Suppose our collection contains thousands of similar documents.
+
+We frequently search for users using their email addresses.
+
+A query might look like this:
+
+```javascript
+db.users.find({
+    email: "arjun@example.com"
+})
+```
+
+MongoDB needs to locate the matching document.
+
+Without a suitable index, it may perform a collection scan.
+
+## 4. What Is a Collection Scan?
+
+A collection scan happens when MongoDB examines documents in a collection to find the ones matching a query.
+
+MongoDB identifies this operation as:
+
+`COLLSCAN`
+
+For example:
+
+```javascript
+db.users.find({
+    city: "Kolkata"
+})
+```
+
+If there is no suitable index on `city`, MongoDB may need to examine a large number of documents.
+
+This can become inefficient as the collection grows.
+
+A collection scan is not always bad. For a small collection, scanning documents may be perfectly reasonable.
+
+The important thing is understanding when an index can improve performance.
+
+## 5. Creating an Index in MongoDB
+
+MongoDB allows us to create indexes using the `createIndex()` method.
+
+For example:
+
+```javascript
+db.users.createIndex({
+    email: 1
+})
+```
+
+Here:
+
+- `users` is the collection name.
+- `createIndex()` creates an index.
+- `email` is the field being indexed.
+- `1` represents ascending index order.
+
+For descending order, we can use `-1`.
+
+```javascript
+db.users.createIndex({
+    age: -1
+})
+```
+
+Now MongoDB has an index on the `age` field.
+
+If we frequently search using email, the first index can help MongoDB locate matching documents without scanning the entire collection.
+
+## 6. How Does MongoDB Store Indexes?
+
+MongoDB uses a data structure called a **B-tree-based index** for its standard indexes.
+
+A B-tree keeps indexed values organised in a structure that allows the database to navigate through the values efficiently.
+
+Instead of checking every document, the database can use the index structure to narrow down where the required information is located.
+
+A simplified example:
+
+```text
+              50
+            /    \
+          25      75
+         /  \    /  \
+       10   35  60   90
+```
+
+This is only a simplified illustration of a search tree, not the exact internal layout of a MongoDB index.
+
+The main idea is that organised data structures can reduce the amount of searching required.
+
+## 7. Understanding IXSCAN
+
+When MongoDB uses an index to execute a query, its execution plan may contain:
+
+`IXSCAN`
+
+This stands for Index Scan.
+
+Let's examine a query:
+
+```javascript
+db.users.find({
+    email: "arjun@example.com"
+}).explain("executionStats")
+```
+
+The `explain()` method helps us understand how MongoDB executes a query.
+
+It can provide information such as:
+
+- The execution plan.
+- Whether an index was used.
+- The number of documents examined.
+- The number of documents returned.
+- Execution time statistics.
+
+Two important stages to recognise are:
+
+| Stage | Meaning |
+|---|---|
+| COLLSCAN | MongoDB scans documents in the collection |
+| IXSCAN | MongoDB scans an index to locate matching values |
+
+The objective is not to force every query to use an index. The objective is to choose an efficient execution plan.
+
+## 8. Understanding Compound Indexes
+
+Sometimes we search using more than one field.
+
+For example:
+
+```javascript
+db.users.find({
+    city: "Kolkata",
+    age: 21
+})
+```
+
+Instead of creating separate indexes for every field, MongoDB supports compound indexes.
+
+Example:
+
+```javascript
+db.users.createIndex({
+    city: 1,
+    age: 1
+})
+```
+
+This creates an index involving both `city` and `age`.
+
+However, the order of fields matters.
+
+A compound index on:
+
+```javascript
+{
+    city: 1,
+    age: 1
+}
+```
+
+can support queries using the `city` field alone, as well as queries using both `city` and `age`.
+
+But it is not generally equivalent to having an index on `age` alone.
+
+This behaviour is related to the **prefix rule** of compound indexes.
+
+When designing compound indexes, we should consider the fields used in actual queries.
+
+## 9. Unique Indexes
+
+MongoDB also supports unique indexes.
+
+A unique index prevents multiple documents from having the same indexed value.
+
+For example:
+
+```javascript
+db.users.createIndex(
+    { email: 1 },
+    { unique: true }
+)
+```
+
+Now two users cannot have the same email address in this collection.
+
+This is useful for fields such as:
+
+- Email addresses
+- Usernames
+- Employee IDs
+- Product codes
+
+One important detail: existing duplicate values must be resolved before creating a unique index successfully.
+
+Also, a unique index is not a complete replacement for application-level validation or authentication.
+
+## 10. Are Indexes Always Beneficial?
+
+Not necessarily.
+
+Indexes improve certain read operations, but they also introduce additional costs.
+
+Whenever a document is inserted, updated, or deleted, MongoDB may need to update the relevant indexes.
+
+Indexes also consume storage and memory.
+
+Let's compare the advantages and disadvantages.
+
+| Advantages | Disadvantages |
+|---|---|
+| Faster indexed queries | Additional storage required |
+| Better search performance | Insertions can become more expensive |
+| Useful for sorting and filtering | Updates may require index maintenance |
+| Can enforce uniqueness | Too many indexes can hurt overall performance |
+
+This is why creating an index for every field is not a good database design strategy.
+
+Indexes should be created according to actual application requirements and query patterns.
+
+## 11. Practical Experiment
+
+I want to understand the difference between a collection scan and an index scan by testing them.
+
+First, create a collection with sample documents.
+
+```javascript
+for (let i = 1; i <= 10000; i++) {
+    db.users.insertOne({
+        userId: i,
+        name: "User" + i,
+        email: "user" + i + "@example.com",
+        age: 18 + (i % 40),
+        city: i % 2 === 0 ? "Kolkata" : "Delhi"
+    });
+}
+```
+
+Now run a query using the email field:
+
+```javascript
+db.users.find({
+    email: "user5000@example.com"
+}).explain("executionStats")
+```
+
+Check the execution plan and note the number of documents examined.
+
+Next, create an index:
+
+```javascript
+db.users.createIndex({
+    email: 1
+})
+```
+
+Run the same query again:
+
+```javascript
+db.users.find({
+    email: "user5000@example.com"
+}).explain("executionStats")
+```
+
+Compare the results.
+
+Things to observe:
+
+1. Did the execution stage change from `COLLSCAN` to `IXSCAN`?
+2. How many documents were examined?
+3. How many documents were returned?
+4. Did the execution time change?
+
+The actual execution time can vary depending on hardware, caching, and other factors. The execution plan and documents examined are useful evidence when comparing the two approaches.
+
+## 12. Important MongoDB Commands
+
+Some commands worth remembering:
+
+| Command | Purpose |
+|---|---|
+| `db.users.createIndex()` | Creates an index |
+| `db.users.getIndexes()` | Displays existing indexes |
+| `db.users.dropIndex()` | Removes a particular index |
+| `db.users.explain()` | Examines query execution |
+| `db.users.dropIndexes()` | Removes indexes other than the default `_id` index |
+
+Example:
+
+```javascript
+db.users.getIndexes()
+```
+
+To remove the email index:
+
+```javascript
+db.users.dropIndex({
+    email: 1
+})
+```
+
+Be careful when removing indexes from a production database because queries may become slower afterwards.
+
+## 13. What I Learned
+
+The biggest takeaway from this topic is that database performance is not only about how much data we store. It is also about how we organise and retrieve that data.
+
+An index acts like an additional structure that helps MongoDB find information more efficiently.
+
+However, indexes are not free. They consume storage and require maintenance whenever indexed data changes.
+
+I also learned about `COLLSCAN`, `IXSCAN`, compound indexes, and unique indexes.
+
+These concepts are useful when developing backend applications because database queries can become a performance bottleneck as an application grows.
+
+## 14. Questions for Further Exploration
+
+1. Why does MongoDB use B-tree-based indexes?
+2. What is the difference between a single-field index and a compound index?
+3. Why does the order of fields matter in a compound index?
+4. Can creating too many indexes reduce database performance?
+5. What is a covered query in MongoDB?
+6. How does MongoDB decide which index to use?
+7. What is the difference between an index and a primary key?
+8. How would you design indexes for an e-commerce application?
+
+---
+
+**Next learning target:** Explore MongoDB query optimisation, covered queries, and the ESR (Equality, Sort, Range) guideline for designing compound indexes.
